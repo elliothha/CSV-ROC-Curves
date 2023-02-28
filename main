@@ -1,0 +1,208 @@
+import pandas as pd
+import numpy as np
+
+import matplotlib.pyplot as plt
+
+
+# returns [-inf {sorted list of decision statistics} +inf]
+def everyStatisticThreshold(decisionList):
+    decisionList = np.sort(decisionList)
+    decisionList = np.insert(decisionList, 0, np.NINF)
+    decisionList = np.append(decisionList, np.Inf)
+
+    thresholds = np.sort(decisionList)
+
+    return thresholds
+
+
+# linearly sample the range of decision statistics
+# returns [-inf {99 linearly spaced samples from min(Lambda) to max(Lambda)} +inf]
+def linearSamplingThreshold(decisionList):
+    sampleIndices = np.linspace(start=np.min(decisionList), stop=np.max(decisionList), num=99, endpoint=True)
+    sampleIndices = np.insert(sampleIndices, 0, np.NINF)
+    sampleIndices = np.append(sampleIndices, np.Inf)
+
+    thresholds = np.sort(sampleIndices)
+
+    return thresholds
+
+
+# n is chosen so there will be 99 selected thresholds
+# if there are too few statistics to get 99, n = 1
+# returns [-inf {99 nth spaced samples} +inf]
+def nthSamplingThreshold(decisionList):
+    n = 1
+    if len(decisionList) > 99:
+        n = np.floor(len(decisionList) / 99)
+
+    nthSampleIndices = []
+
+    index = 0
+    while index < len(decisionList):
+        nthSampleIndices.append(decisionList[int(index)])
+        index = index + n
+
+    nthSampleIndices = np.insert(nthSampleIndices, 0, np.NINF)
+    nthSampleIndices = np.append(nthSampleIndices, np.Inf)
+
+    thresholds = np.sort(nthSampleIndices)
+
+    return thresholds
+
+
+# returns [-inf {every H_0 decision statistic} +inf]
+def everyH0Threshold(truthList, decisionList):
+    everyH0Statistic = []
+
+    for index in range(len(truthList)):
+        if truthList[index] == 0:
+            everyH0Statistic.append(decisionList[index])
+
+    everyH0Statistic = np.insert(everyH0Statistic, 0, np.NINF)
+    everyH0Statistic = np.append(everyH0Statistic, np.Inf)
+
+    thresholds = np.sort(everyH0Statistic)
+
+    return thresholds
+
+
+# Thresholds selected SUCH THAT
+# P_FA is linearly sampled from 0 to 1 at an interval of 0.01
+# returns [{thresholds from 101 samples of P_FA}] no inf!!!
+def linearPFASamplingThreshold(truthList, decisionList):
+    thresholds = []
+
+    countH0 = 0
+    for decision in truthList:
+        if decision == 0:
+            countH0 = countH0 + 1
+
+    linearPFASampleIndices = []
+
+    interval = 0
+    while interval <= 1:
+        indexFromBack = np.floor(interval * countH0)
+        if indexFromBack == 0:
+            linearPFASampleIndices.append(0)
+        else:
+            linearPFASampleIndices.append(decisionList[int(len(decisionList) - indexFromBack)])
+        interval = interval + 0.01
+
+    thresholds = np.sort(linearPFASampleIndices)
+
+    return thresholds
+
+
+def plotROCCurve(pairsList, title, color):
+    params = {'mathtext.default': 'regular'}
+    plt.rcParams.update(params)
+
+    x = []  # P_FA
+    y = []  # P_D
+    for point in pairsList:
+        x.append(point[0])
+        y.append(point[1])
+
+    plt.figure()
+    plt.xlabel('$P_{FA}$')
+    plt.ylabel('$P_{D}$')
+    plt.title(title)
+    plt.xlim([0, 1.0])
+    plt.ylim([0, 1.0])
+
+    plt.plot(x, y, linewidth=2, color=color)
+    plt.plot(x, x, linewidth=1, color='black', linestyle='dashed')
+    plt.grid()
+    plt.show()
+
+
+def generateROCCurve(truthList, decisionList, thresholdList, title, color):
+    # each tuple is (P_FA, P_D)
+    pairsList = []
+    for thresholdValue in thresholdList:
+        totalFA = totalD = countFA = countD = 0
+
+        for n in range(len(truthList)):
+            truthValue = truthList[n]
+            decisionValue = decisionList[n]
+
+            if truthValue == 1:
+                totalD = totalD + 1
+                if decisionValue >= thresholdValue:
+                    countD = countD + 1
+
+            elif truthValue == 0:
+                totalFA = totalFA + 1
+                if decisionValue >= thresholdValue:
+                    countFA = countFA + 1
+        # end loop
+
+        pairsList.append([(countFA / totalFA), (countD / totalD)])
+    # end loop
+
+    plotROCCurve(pairsList=pairsList, title=title, color=color)
+
+
+
+def main():
+    df = pd.read_csv('logNormalData.csv', header=None)
+
+    # Truth Values
+    y_true = df.iloc[:, 0]
+    y_true = y_true.values
+    # Predicted Decision Statistics
+    y_score = df.iloc[:, 1]
+    y_score = y_score.values
+
+    # TODO: First ROC Curve for every decision statistic as a threshold
+    thresholds = everyStatisticThreshold(decisionList=y_score)
+    generateROCCurve(
+        truthList=y_true,
+        decisionList=y_score,
+        thresholdList=thresholds,
+        title='ROC Curve for everyStatisticThreshold',
+        color='red'
+    )
+
+    # TODO: Second ROC Curve for linear sampling of decision statistics as thresholds
+    thresholds = linearSamplingThreshold(decisionList=y_score)
+    generateROCCurve(
+        truthList=y_true,
+        decisionList=y_score,
+        thresholdList=thresholds,
+        title='ROC Curve for linearSamplingThreshold',
+        color='blue'
+    )
+
+    # TODO: Third ROC Curve for sampling of every nth decision statistic as thresholds
+    thresholds = nthSamplingThreshold(decisionList=y_score)
+    generateROCCurve(
+        truthList=y_true,
+        decisionList=y_score,
+        thresholdList=thresholds,
+        title='ROC Curve for nthSamplingThreshold',
+        color='green'
+    )
+
+    # TODO: Fourth ROC Curve for every H_0 decision statistic as a threshold
+    thresholds = everyH0Threshold(truthList=y_true, decisionList=y_score)
+    generateROCCurve(
+        truthList=y_true,
+        decisionList=y_score,
+        thresholdList=thresholds,
+        title='ROC Curve for everyH0DecisionThreshold',
+        color='orange'
+    )
+
+    # TODO: Fifth ROC Curve for 101 linear samples of P_FA as thresholds
+    thresholds = linearPFASamplingThreshold(truthList=y_true, decisionList=y_score)
+    generateROCCurve(
+        truthList=y_true,
+        decisionList=y_score,
+        thresholdList=thresholds,
+        title='ROC Curve for linearPFASamplingThreshold',
+        color='purple'
+    )
+
+
+main()
